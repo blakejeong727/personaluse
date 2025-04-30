@@ -5,6 +5,8 @@ import requests
 
 CMC_API_KEY = "bb3c32ee-3be4-4fd0-85b4-ad924bd76e26"
 
+# Get CMC Price
+
 def get_iost_price_usdt():
     url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest"
     params = {"symbol": "IOST", "convert": "USDT"}
@@ -13,31 +15,45 @@ def get_iost_price_usdt():
     data = response.json()
     return float(data["data"]["IOST"]["quote"]["USDT"]["price"])
 
+# Binance API
+
 def fetch_orderbook_binance():
     url = "https://api.binance.com/api/v3/depth?symbol=IOSTUSDT&limit=1000"
-    data = requests.get(url).json()["asks"]
-    return pd.DataFrame([[float(p), float(q)] for p, q in data], columns=["price", "quantity"])
+    data = requests.get(url).json()
+    if "asks" not in data:
+        raise ValueError(f"Binance response missing 'asks': {data}")
+    return pd.DataFrame([[float(p), float(q)] for p, q in data["asks"]], columns=["price", "quantity"])
+
+# OKX API
 
 def fetch_orderbook_okx():
     url = "https://www.okx.com/api/v5/market/books?instId=IOST-USDT"
     data = requests.get(url).json()["data"][0]["asks"]
     return pd.DataFrame([[float(level[0]), float(level[1])] for level in data], columns=["price", "quantity"])
 
+# Upbit IOST/KRW
+
 def fetch_orderbook_upbit():
     url = "https://api.upbit.com/v1/orderbook?markets=KRW-IOST"
     data = requests.get(url).json()[0]["orderbook_units"]
     return pd.DataFrame([[round(float(d["ask_price"]), 2), float(d["ask_size"])] for d in data], columns=["price", "quantity"])
+
+# Bithumb IOST/KRW
 
 def fetch_orderbook_bithumb():
     url = "https://api.bithumb.com/public/orderbook/IOST_KRW"
     data = requests.get(url).json()["data"]["asks"]
     return pd.DataFrame([[round(float(d["price"]), 2), float(d["quantity"])] for d in data], columns=["price", "quantity"])
 
+# 계산 함수
+
 def calculate_total(df, target_price):
     filtered = df[df["price"] <= target_price]
     total_tokens = filtered["quantity"].sum()
     total_cost = (filtered["price"] * filtered["quantity"]).sum()
     return total_tokens, total_cost
+
+# Dash 앱 시작
 
 app = Dash(__name__)
 app.title = "IOST Orderbook Dashboard"
@@ -75,7 +91,6 @@ def update_output(n_clicks, target_pct):
 
     rows = []
     total_tokens = 0
-    total_costs = []
 
     for name, (unit, df, t_price) in sources.items():
         if t_price is None:
@@ -84,7 +99,6 @@ def update_output(n_clicks, target_pct):
 
         tokens, cost = calculate_total(df, t_price)
         total_tokens += tokens
-        total_costs.append((name, cost, unit))
         rows.append({
             "Exchange": name,
             "Target Price": f"{unit}{t_price:,.6f}" if unit == "$" else f"{unit}{t_price:,.2f}",
